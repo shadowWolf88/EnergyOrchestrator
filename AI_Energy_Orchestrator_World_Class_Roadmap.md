@@ -1,10 +1,10 @@
-# AI-Optimized Urban Energy Orchestrator | Implementation Roadmap
+# TORQ | Transformer Orchestration & Resource Quantification — Implementation Roadmap
 
 ## Executive Summary
 
-This document outlines the complete development roadmap for a **production-grade energy micromanagement platform** serving 10–200 UK residential homes. The system combines physics-based simulation, stochastic modelling, integer programming optimization, and interactive visualization to deliver 15–25% peak reduction and 8–12% annual cost savings.
+This document outlines the complete development roadmap for **TORQ** — a production-grade energy management platform serving 10–200 UK residential homes. TORQ combines physics-based simulation, stochastic modelling, integer programming optimisation, and interactive visualisation to deliver 15–25% peak reduction and 8–12% annual cost savings — with transformer upgrade deferral as the primary measurable KPI.
 
-**Target Users**: DNOs, independent aggregators, energy retail innovators, research institutions.
+**Target Users**: DNOs, independent aggregators, housing developers, eco-communities, energy retail innovators, research institutions.
 
 ---
 
@@ -265,55 +265,90 @@ This document outlines the complete development roadmap for a **production-grade
 
 ---
 
-### 🚀 Phase 5 (Part B): Validation & Hardening (RECOMMENDED NEXT)
+### 🚀 Phase 5 (Part B): Validation, Hardening & Dashboard Upgrade (RECOMMENDED NEXT)
 
-**Estimated Timeline:** 2–3 weeks (February–March 2026)
+**Timeline:** March 2026
 
 **Deliverables (Priority Order):**
-1. **Real Data Integration** (HIGH PRIORITY)
+
+1. **Dashboard Live Data** (HIGHEST PRIORITY — quick win)
+   - [ ] Load `simulation_results_baseline.csv` and `simulation_results_optimized.csv` in all dashboard pages instead of random demo data
+   - [ ] Add "Run Simulation" button in dashboard to execute `main.py` from UI
+   - [ ] Settings page (currently "Coming Soon") — estate size, transformer limit, tariff selector, seed
+   - [ ] Export current scenario to CSV/PDF from dashboard
+   - Impact: Dashboard becomes a real analytical tool, not just a static display
+
+2. **Real Data Integration** (HIGH PRIORITY)
    - [ ] Connect to UK Met Office weather API or PVGIS for real solar irradiance
-   - [ ] Integrate ESO Carbon Intensity API for actual grid carbon signals
-   - [ ] Map real tariffs (Octopus Energy API, EDF, etc.)
+   - [ ] Integrate ESO Carbon Intensity API for actual grid carbon signals (`data/realtime_eso_api.py` already exists — wire it up)
+   - [ ] Map real tariffs (Octopus Energy Agile API — live half-hourly prices)
    - [ ] Validate against BDUK demand profiles
-   - Impact: Every result will be real-world validated
+   - Impact: Every result real-world validated, credible to DNOs and regulators
 
-2. **Benchmark Validation** (HIGH PRIORITY)
-   - [ ] Compare vs DNO-provided baseline data (if available)
-   - [ ] Sensitivity analysis (solar capacity ±30%, demand ±20%, tariff ±15%)
-   - [ ] Edge cases (low-wind days, extreme temperatures, EV scarcity)
-   - Impact: Peer-review ready, defensible to regulators
+3. **Hockerton Housing Project Pilot** (HIGH PRIORITY — strategic)
+   - [ ] Configure simulation for Hockerton estate specifics (9 homes, Nottinghamshire, known solar/battery assets)
+   - [ ] Pull real Nottinghamshire weather data from Met Office API
+   - [ ] Generate pilot report: baseline vs optimised for Hockerton configuration
+   - [ ] Map transformer constraints based on actual Hockerton DNO connection
+   - Impact: First real-world validation case; shareable with community + Ofgem/DESNZ
 
-3. **Extended Test Scenarios** (MEDIUM PRIORITY)
-   - [ ] Urban estates (high demand, low solar)
-   - [ ] Rural estates (high solar, low demand)
-   - [ ] Mixed-tenure (rented + owned, various asset distributions)
-   - [ ] Seasonal variations (winter vs summer peak strategies)
-   - Impact: Portfolio-wide applicability proof
+4. **Benchmark Validation** (HIGH PRIORITY)
+   - [ ] Sensitivity analysis module (`analysis/sensitivity.py`): vary solar ±30%, demand ±20%, tariff type
+   - [ ] Compare baseline vs BDUK demand standard profiles
+   - [ ] Edge cases: low-wind January, heatwave July, EV fleet peak coincidence
+   - Impact: Peer-review ready, defensible to regulators and funders
 
-4. **Performance Optimization** (MEDIUM PRIORITY)
-   - [ ] Solver warm-starting (use prior solution as initial guess)
-   - [ ] Solution caching for repeated scenarios
-   - [ ] GPU acceleration option (if >500 homes)
-   - Target: <30s solve for 100+ homes
+5. **AI Forecasting Modules** (MEDIUM PRIORITY — adds "AI" authenticity)
+   - [ ] `ai/demand_forecaster.py`: ARIMA/Prophet 24-hour demand forecast
+   - [ ] `ai/solar_forecaster.py`: cloud cover probability + irradiance forecast
+   - [ ] `ai/ev_predictor.py`: arrival time + energy need prediction
+   - [ ] Feed forecasts into rolling MILP horizon (replaces synthetic look-ahead)
+   - Impact: Upgrades from "optimised simulation" to "AI-driven real-time control"
+
+6. **REST API** (MEDIUM PRIORITY)
+   - [ ] FastAPI wrapper: `POST /api/v1/simulate`, `GET /api/v1/results/{run_id}`
+   - [ ] `GET /api/v1/carbon/current` (proxy to ESO API)
+   - [ ] `GET /api/v1/tariff/agile` (proxy to Octopus API)
+   - [ ] OpenAPI docs auto-generated
+   - Impact: Enables third-party integrations, HEMS connectivity, VPP aggregator access
+
+7. **Heat Pump Integration** (MEDIUM PRIORITY)
+   - [ ] `core/heat_pump.py`: COP(T) model, thermal mass pre-heating, load shifting
+   - [ ] Pre-heat scheduling: charge thermal mass during low-carbon / low-tariff windows
+   - [ ] Extend `HouseholdModel` to include heat pump asset
+   - Impact: Represents 30–40% of UK households by 2030; critical for peak modelling
+
+8. **Performance Optimization** (MEDIUM PRIORITY)
+   - [ ] Solver warm-starting (prior solution as initial guess)
+   - [ ] Solution caching for repeated scenario configs
+   - [ ] Target: <30s solve for 100+ homes
    - Impact: Real-time control feasibility
 
-5. **Cloud Pilot** (LOWER PRIORITY, Phase 5 Part B.2)
-   - [ ] AWS Lambda wrapper + API Gateway (serverless simulation)
-   - [ ] Scheduled execution (daily optimization runs)
-   - [ ] Results database (PostgreSQL + TimescaleDB)
-   - [ ] Monitoring (CloudWatch alarms)
-   - Impact: On-demand multi-estate orchestration
+9. **Extended Test Scenarios** (LOWER PRIORITY)
+   - [ ] Urban estates (high demand, low solar)
+   - [ ] Rural estates (high solar, low demand — Hockerton archetype)
+   - [ ] Mixed-tenure (rented + owned, various asset distributions)
+   - [ ] Seasonal scenario comparison: winter peak vs summer export management
+
+10. **Cloud Pilot** (LOWER PRIORITY)
+    - [ ] Docker Compose with app + PostgreSQL/TimescaleDB
+    - [ ] Google Cloud Run deployment (preferred: low cost, scale-to-zero)
+    - [ ] Scheduled daily optimization runs via Cloud Scheduler
+    - [ ] Monitoring + alerting (uptime + solver failure detection)
+    - Impact: On-demand multi-estate orchestration, accessible to external partners
 
 ---
 
-### 🎯 Phase 6: Advanced Optimization & Multi-Feeder Networks (PLANNED - April 2026)
+### 🎯 Phase 6: Advanced Optimization, Multi-Feeder & VPP (PLANNED - April 2026)
 
-**Timeline:** 6–8 weeks | **Team:** 2 engineers
+**Timeline:** 6–8 weeks
 
 **Key Features:**
 - [ ] Multi-feeder network models (N feeders → shared substation transformer)
+- [ ] Vehicle-to-Grid (V2G) bidirectional EV charging model
+- [ ] Virtual Power Plant (VPP) mode: aggregate all assets for grid services revenue
 - [ ] Demand-side flexibility modules (EV trip planning, thermal mass pre-heating, flexible appliances)
-- [ ] Fully-coordinated MILP (all homes in single optimization problem)
+- [ ] Fully-coordinated MILP (all homes in single optimization problem, not per-home)
 - [ ] Stochastic optimization (forecast uncertainty propagation via scenario trees)
 - [ ] Advanced control (rolling receding horizon with measured feedback)
 
@@ -591,4 +626,4 @@ Energy Balance Error:  <0.5%
 
 ---
 
-**Last Updated:** February 26, 2026 | **Status:** Phase 1 Complete, Phase 5 Ready to Start
+**Last Updated:** February 25, 2026 | **Status:** Phases 1–5A Complete, Phase 5B In Progress

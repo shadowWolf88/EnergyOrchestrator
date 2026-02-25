@@ -8,12 +8,12 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="Overview", page_icon="📊")
+st.set_page_config(page_title="TORQ | Overview", page_icon="📊")
 
-st.title("📊 Simulation Overview")
+st.title("📊 Estate Overview")
 
 st.markdown("""
-High-level comparison of baseline (greedy) vs optimized (MILP) scenarios.
+Baseline (greedy, independent control) vs TORQ-optimised (coordinated MILP) — 50 homes, 30 days.
 """)
 
 col1, col2, col3, col4 = st.columns(4)
@@ -61,14 +61,14 @@ with col_left:
         'Scenario': ['Baseline', 'Optimized'],
         'Peak Load (kW)': [261.5, 213.7],
     }
-    
+
     fig, ax = plt.subplots(figsize=(8, 5))
     scenarios = peak_data['Scenario']
     peaks = peak_data['Peak Load (kW)']
-    limit = 100
+    limit = 250  # 50-home estate transformer upgrade threshold (kW)
     
     bars = ax.bar(scenarios, peaks, color=['#ef4444', '#10b981'], alpha=0.8, width=0.6)
-    ax.axhline(y=limit, color='#f59e0b', linestyle='--', linewidth=2, label='Transformer Limit')
+    ax.axhline(y=limit, color='#f59e0b', linestyle='--', linewidth=2, label=f'Transformer Limit ({limit} kW)')
     ax.set_ylabel('Load (kW)', fontsize=12, fontweight='bold')
     ax.set_title('Peak Load: Baseline vs Optimized', fontsize=14, fontweight='bold')
     ax.set_ylim(0, 300)

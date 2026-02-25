@@ -18,107 +18,186 @@ logger = logging.getLogger(__name__)
 
 
 class CarbonIntensityAPI:
-    """Fetch real UK grid carbon intensity from Electricity Maps API (free tier)."""
-    
-    BASE_URL = "https://api.electricitymap.org/v3/carbon-intensity"
-    
+    """
+    Fetch real UK grid carbon intensity from the National Grid ESO Carbon Intensity API.
+
+    Endpoint: https://api.carbonintensity.org.uk  (completely free, no API key required)
+    Documentation: https://carbon-intensity.github.io/api-definitions/
+
+    Regional IDs:
+        1=North Scotland, 2=South Scotland, 3=North West England,
+        4=North East England, 5=Yorkshire, 6=North Wales & Merseyside,
+        7=South Wales, 8=West Midlands, 9=East Midlands (Hockerton area),
+        10=East England, 11=South West England, 12=South England,
+        13=London, 14=South East England
+    """
+
+    BASE_URL = "https://api.carbonintensity.org.uk"
+    EAST_MIDLANDS_REGION_ID = 9  # Covers Nottinghamshire / Hockerton
+
     @staticmethod
-    def get_current_intensity(zone: str = "GB") -> Optional[Dict]:
+    def get_current_intensity() -> Optional[Dict]:
         """
-        Get current carbon intensity for UK (GB zone).
-        
-        Args:
-            zone: ISO code (GB for Great Britain)
-            
+        Get current national GB carbon intensity (no API key required).
+
         Returns:
-            Dict with 'carbonIntensity' (gCO2/kWh), 'datetime', etc.
-            None if API unavailable
+            Dict with 'intensity' (forecast + actual gCO2/kWh), 'generationmix', etc.
+            None if API unavailable.
         """
         try:
-            url = f"{CarbonIntensityAPI.BASE_URL}/latest?zone={zone}"
-            # Note: Free tier may require API key. Here we use public endpoint.
-            response = requests.get(url, timeout=5)
+            url = f"{CarbonIntensityAPI.BASE_URL}/intensity"
+            response = requests.get(url, timeout=5, headers={"Accept": "application/json"})
             response.raise_for_status()
             data = response.json()
-            logger.info(f"ESO Carbon Intensity: {data.get('carbonIntensity', 'N/A')} gCO2/kWh")
-            return data
+            entry = data.get("data", [{}])[0]
+            intensity = entry.get("intensity", {})
+            value = intensity.get("actual") or intensity.get("forecast")
+            logger.info(f"ESO Carbon Intensity: {value} gCO2/kWh")
+            return entry
         except Exception as e:
             logger.warning(f"Carbon Intensity API failed (using synthetic): {e}")
             return None
-    
+
     @staticmethod
-    def get_forecast(date_from: datetime, date_to: datetime, zone: str = "GB") -> Optional[pd.DataFrame]:
+    def get_24h_forecast() -> Optional[pd.DataFrame]:
         """
-        Get carbon intensity forecast (limited by free tier).
-        
+        Get 24-hour ahead national carbon intensity forecast (48 half-hourly periods).
+
         Returns:
-            DataFrame with timestamp, carbonIntensity columns
-            None if API unavailable
+            DataFrame with columns: timestamp, carbon_intensity_gco2_per_kwh
+            None if API unavailable.
         """
         try:
-            url = f"{CarbonIntensityAPI.BASE_URL}/forecast?zone={zone}"
-            response = requests.get(url, timeout=10)
+            url = f"{CarbonIntensityAPI.BASE_URL}/intensity/date/{datetime.now().strftime('%Y-%m-%d')}"
+            response = requests.get(url, timeout=10, headers={"Accept": "application/json"})
             response.raise_for_status()
             data = response.json()
-            
-            # Parse forecast data
-            forecasts = data.get('forecast', [])
-            if forecasts:
-                df = pd.DataFrame([
-                    {
-                        'timestamp': pd.Timestamp(f['datetime']),
-                        'carbon_intensity_gco2_per_kwh': f['carbonIntensity'],
-                    }
-                    for f in forecasts
-                ])
-                logger.info(f"Fetched {len(df)} carbon intensity forecasts from ESO")
+
+            records = []
+            for entry in data.get("data", []):
+                intensity = entry.get("intensity", {})
+                value = intensity.get("actual") or intensity.get("forecast")
+                if value is not None:
+                    records.append({
+                        "timestamp": pd.Timestamp(entry["from"]),
+                        "carbon_intensity_gco2_per_kwh": float(value),
+                    })
+
+            if records:
+                df = pd.DataFrame(records).sort_values("timestamp").reset_index(drop=True)
+                logger.info(f"Fetched {len(df)} carbon intensity periods from ESO API")
                 return df
         except Exception as e:
-            logger.warning(f"Carbon Intensity forecast failed: {e}")
-        
+            logger.warning(f"Carbon Intensity 24h forecast failed: {e}")
+
         return None
+
+    @staticmethod
+    def get_regional_intensity(region_id: int = 9) -> Optional[Dict]:
+        """
+        Get current regional carbon intensity (East Midlands = region 9).
+
+        Args:
+            region_id: ESO regional ID (default 9 = East Midlands / Nottinghamshire)
+
+        Returns:
+            Dict with intensity data for the region, or None on failure.
+        """
+        try:
+            url = f"{CarbonIntensityAPI.BASE_URL}/regional/regionid/{region_id}"
+            response = requests.get(url, timeout=5, headers={"Accept": "application/json"})
+            response.raise_for_status()
+            data = response.json()
+            entry = data.get("data", [{}])[0]
+            logger.info(f"Regional (East Midlands) intensity fetched")
+            return entry
+        except Exception as e:
+            logger.warning(f"Regional Carbon Intensity API failed: {e}")
+            return None
 
 
 class OctopusEnergyAPI:
-    """Fetch real UK tariffs from Octopus Energy API (free, no auth for public rates)."""
-    
-    BASE_URL = "https://api.octopus.energy/v1/products"
-    
+    """
+    Fetch real UK Agile tariff rates from Octopus Energy API.
+
+    Completely free, no API key required for public product rates.
+    Documentation: https://developer.octopus.energy/docs/api/
+    Region codes: A=East Midlands, B=East England, C=London, D=Merseyside,
+                  E=West Midlands, F=North East, G=North West, H=South England,
+                  J=South East, K=South West, L=South Wales, M=Yorkshire,
+                  N=North Scotland, P=South Scotland
+    """
+
+    BASE_URL = "https://api.octopus.energy/v1"
+    # East Midlands region = A (covers Nottinghamshire)
+    EAST_MIDLANDS_REGION = "A"
+
     @staticmethod
-    def get_agile_tariff(region: str = "E") -> Optional[pd.DataFrame]:
+    def _get_current_agile_product_code() -> Optional[str]:
+        """Discover the current live Agile Octopus product code via the products API."""
+        try:
+            resp = requests.get(
+                f"{OctopusEnergyAPI.BASE_URL}/products/?is_variable=true&is_prepay=false",
+                timeout=10,
+            )
+            resp.raise_for_status()
+            for product in resp.json().get("results", []):
+                if "AGILE" in product.get("code", "") and product.get("is_available"):
+                    return product["code"]
+        except Exception as e:
+            logger.warning(f"Octopus product discovery failed: {e}")
+        return "AGILE-FLEX-22-11-25"  # Fallback to known historic code
+
+    @staticmethod
+    def get_agile_tariff(
+        region: str = "A",
+        period_from: Optional[datetime] = None,
+        period_to: Optional[datetime] = None,
+    ) -> Optional[pd.DataFrame]:
         """
-        Get Agile tariff rates for a region.
-        
+        Get Agile Octopus half-hourly tariff rates for a region.
+
         Args:
-            region: GB region code (E=East, L=London, etc.)
-            
+            region: Octopus region code (default A = East Midlands / Nottinghamshire)
+            period_from: Start datetime (default: 24h ago)
+            period_to: End datetime (default: now)
+
         Returns:
-            DataFrame with timestamp, tariff_£_per_kwh columns
-            None if API unavailable
+            DataFrame with columns: timestamp, tariff_gbp_per_kwh
+            None if API unavailable.
         """
         try:
-            # Octopus Agile tariff ID (public)
-            product_id = "AGILE-23-12-06"  # Example; may need update
-            url = f"{OctopusEnergyAPI.BASE_URL}/{product_id}/electricity-tariffs/"
-            
-            response = requests.get(url, timeout=5)
+            product_code = OctopusEnergyAPI._get_current_agile_product_code()
+            tariff_code = f"E-1R-{product_code}-{region}"
+            url = (
+                f"{OctopusEnergyAPI.BASE_URL}/products/{product_code}"
+                f"/electricity-tariffs/{tariff_code}/standard-unit-rates/"
+            )
+
+            params = {}
+            if period_from:
+                params["period_from"] = period_from.isoformat()
+            if period_to:
+                params["period_to"] = period_to.isoformat()
+
+            response = requests.get(url, timeout=10, params=params)
             response.raise_for_status()
             data = response.json()
-            
-            rates = data.get('results', [])
+
+            rates = data.get("results", [])
             if rates:
                 df = pd.DataFrame([
                     {
-                        'timestamp': pd.Timestamp(r['valid_from']),
-                        'tariff_£_per_kwh': r['unit_rate'] / 100,  # Convert pence to pounds
+                        "timestamp": pd.Timestamp(r["valid_from"]),
+                        "tariff_gbp_per_kwh": r["value_inc_vat"] / 100,  # pence → pounds
                     }
-                    for r in rates[:48]  # Last 48 periods
-                ])
-                logger.info(f"Fetched {len(df)} Agile tariff rates from Octopus")
+                    for r in rates
+                ]).sort_values("timestamp").reset_index(drop=True)
+                logger.info(f"Fetched {len(df)} Agile tariff rates from Octopus ({region})")
                 return df
         except Exception as e:
-            logger.warning(f"Octopus Energy API failed: {e}")
-        
+            logger.warning(f"Octopus Energy Agile API failed: {e}")
+
         return None
 
 
@@ -173,19 +252,36 @@ class WeatherAPI:
 
 
 if __name__ == "__main__":
-    # Quick test
-    print("Testing real ESO APIs...")
-    
-    # Carbon intensity
+    # Quick connectivity test — run: python data/realtime_eso_api.py
+    print("Testing real ESO/Octopus APIs (no API key required)...")
+
+    # National carbon intensity
     ci = CarbonIntensityAPI.get_current_intensity()
     if ci:
-        print(f"✓ Current grid carbon intensity: {ci.get('carbonIntensity')} gCO2/kWh")
+        intensity = ci.get("intensity", {})
+        val = intensity.get("actual") or intensity.get("forecast")
+        print(f"✓ National grid carbon intensity: {val} gCO2/kWh")
     else:
-        print("✗ Carbon Intensity API unavailable (expected - requires subscription)")
-    
+        print("✗ Carbon Intensity API unavailable")
+
+    # East Midlands regional intensity
+    regional = CarbonIntensityAPI.get_regional_intensity(region_id=9)
+    if regional:
+        print(f"✓ East Midlands regional data received")
+    else:
+        print("✗ Regional Carbon Intensity API unavailable")
+
+    # 24h forecast
+    forecast = CarbonIntensityAPI.get_24h_forecast()
+    if forecast is not None:
+        print(f"✓ Fetched {len(forecast)} carbon intensity half-hour periods")
+    else:
+        print("✗ Carbon Intensity 24h forecast unavailable")
+
     # Octopus Agile tariff
-    agile = OctopusEnergyAPI.get_agile_tariff()
+    agile = OctopusEnergyAPI.get_agile_tariff(region="A")
     if agile is not None:
-        print(f"✓ Fetched {len(agile)} Agile tariff rates")
+        print(f"✓ Fetched {len(agile)} Agile tariff rates (East Midlands)")
+        print(f"  Range: {agile['tariff_gbp_per_kwh'].min():.4f}–{agile['tariff_gbp_per_kwh'].max():.4f} GBP/kWh")
     else:
-        print("✗ Octopus API unavailable")
+        print("✗ Octopus Agile API unavailable")

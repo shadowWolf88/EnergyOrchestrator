@@ -1,40 +1,38 @@
 # -*- coding: utf-8 -*-
 """
-Streamlit home page for AI Energy Orchestrator.
-
-Navigate to individual analysis pages using the sidebar or buttons below.
+TORQ — Transformer Orchestration & Resource Quantification
+Home page: navigation hub and executive summary.
 """
 
 import streamlit as st
 
 st.set_page_config(
-    page_title="AI Energy Orchestrator",
+    page_title="TORQ | Grid Intelligence Platform",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-st.title("⚡ AI Energy Orchestrator")
-st.markdown("**World-class energy management optimization for distributed assets**")
+st.title("⚡ TORQ")
+st.markdown("**Transformer Orchestration & Resource Quantification** — coordinating distributed energy assets to defer grid infrastructure upgrades")
 
 st.markdown("""
 ---
 
-## 🌟 Welcome!
+## Platform Results at a Glance
 
-This dashboard provides interactive analysis of energy optimization simulations for residential estates.
+| Metric | Baseline | TORQ-Optimised | Impact |
+|--------|----------|----------------|--------|
+| **Peak Load** | 261.5 kW | 213.7 kW | **−18.3% (47.8 kW)** |
+| **Energy Cost** | GBP 29,799 | GBP 27,952 | **−6.2% (GBP 1,847)** |
+| **CO₂ Emissions** | 7,941 kg | 7,049 kg | **−11.2% (892 kg)** |
+| **Transformer Upgrade** | REQUIRED ✗ | AVOIDED ✓ | **GBP 250,000 deferred** |
 
-**Key Highlights:**
-- 📊 **Peak Load Reduction**: 15-25% reduction via coordinated control
-- 💰 **Cost Savings**: 6-12% per year (GBP 37-200 per home)
-- 🌍 **Carbon Impact**: 10-20% emissions reduction
-- 🏗️ **Transformer Deferral**: Quantified infrastructure value (GBP 40-80k per estate)
+*50 homes, 30-day simulation, Nottinghamshire, seed=42*
 
 ---
 
-## 📊 Quick Navigation
-
-Navigate using the sidebar, or click below to jump to a specific analysis:
+## Navigate
 """)
 
 col1, col2, col3 = st.columns(3)
@@ -42,124 +40,83 @@ col1, col2, col3 = st.columns(3)
 with col1:
     st.markdown("""
 ### 📊 Overview
-- Peak/cost/carbon comparison
-- Key metrics summary
-- Baseline vs optimized
-    
-[→ Go to Overview](./📊_Overview)
+- Estate peak vs transformer limit
+- Cost and carbon comparison
+- Key performance indicators
     """)
+    st.page_link("pages/1_📊_Overview.py", label="→ Overview", icon="📊")
 
 with col2:
     st.markdown("""
-### 🏠 Household Detail  
-- Per-home battery/EV/solar profiles
+### 🏠 Household Detail
+- Per-home battery, EV and solar profiles
 - Individual demand patterns
-- Cost & emissions by home
-
-[→ Go to Household](./🏠_Household_Detail)
+- Cost & emissions by household
     """)
+    st.page_link("pages/2_🏠_Household_Detail.py", label="→ Household Detail", icon="🏠")
 
 with col3:
     st.markdown("""
-### 📈 Optimization
-- Solver performance
+### 📈 Optimisation
+- MILP solver performance
 - Convergence analysis
-- Configuration details
-
-[→ Go to Optimization](./📈_Optimization)
+- Objective weights & configuration
     """)
+    st.page_link("pages/3_📈_Optimization.py", label="→ Optimisation", icon="📈")
 
 col1, col2, col3 = st.columns(3)
 
 with col1:
     st.markdown("""
 ### 💰 Cost Analysis
-- Hourly cost patterns
+- Half-hourly cost patterns
 - Breakdown by component
-- Savings calculation
-
-[→ Go to Costs](./💰_Cost_Analysis)
+- Savings attribution
     """)
+    st.page_link("pages/4_💰_Cost_Analysis.py", label="→ Cost Analysis", icon="💰")
 
 with col2:
     st.markdown("""
 ### 💨 Carbon Impact
-- Grid intensity patterns
+- Live ESO grid intensity
 - Cumulative emissions
-- Reduction strategies
-
-[→ Go to Carbon](./💨_Carbon_Impact)
+- Reduction by strategy
     """)
+    st.page_link("pages/5_💨_Carbon_Impact.py", label="→ Carbon Impact", icon="💨")
 
 with col3:
     st.markdown("""
-### ⚙️ Coming Soon
-- Settings & customization
-- Real data integration
-- API endpoints
-
-📍 Check back soon!
+### ⚙️ Settings & Run
+- Configure estate parameters
+- Launch live simulation
+- Preset scenarios (incl. Hockerton)
     """)
+    st.page_link("pages/6_⚙️_Settings.py", label="→ Settings & Run", icon="⚙️")
 
 st.markdown("""
 ---
 
-## 🚀 Example Results (50 homes, 30 days)
+## How TORQ Works
 
-| Metric | Baseline | Optimized | Improvement |
-|--------|----------|-----------|-------------|
-| **Peak Load** | 261.5 kW | 213.7 kW | **-47.8 kW (-18.3%)** |
-| **Total Cost** | GBP 29,799 | GBP 27,952 | **-GBP 1,847 (-6.2%)** |
-| **CO₂ Emissions** | 7,941 kg | 7,049 kg | **-892 kg (-11.2%)** |
-| **Transformer Upgrade** | **REQUIRED** ✗ | **AVOIDED** ✓ | **GBP 250,000 deferred** |
+**TORQ** treats the estate's LV transformer as the primary constraint — not a secondary consideration. Every asset decision (when to charge a battery, when to charge an EV, when to pre-heat via heat pump) is weighed against a shared objective: keep aggregate demand below the transformer's thermal limit.
 
----
+1. **Physics simulation** — 30-minute timestep models for solar PV, battery storage, EV charging, and demand
+2. **Greedy baseline** — each home acts independently (the counterfactual)
+3. **MILP optimisation** — all homes coordinated in a single mathematical programme (Google OR-Tools)
+4. **Transformer-first objective** — stress weight = 1,000 vs cost weight = 1 (infrastructure deferral is the primary value)
+5. **Validated output** — energy balance checks, Monte Carlo confidence intervals, per-home KPIs
 
-## 💡 About This System
-
-The **AI Energy Orchestrator** is a physics-based energy optimization platform that:
-
-1. **Models real households** with solar panels, batteries, EVs, and heat pumps
-2. **Simulates baseline** (greedy independent control) as benchmark
-3. **Optimizes multi-home** control using MILP (Mixed-Integer Linear Programming)
-4. **Prioritizes transformer deferral** as the PRIMARY objective (weight=1000)
-5. **Quantifies financial value** of peak reduction and infrastructure deferral
-6. **Validates physics** with energy balance checks and statistical tests
-
-**Technology Stack:**
-- Python 3.11+ | Google OR-Tools | Pandas | NumPy | Streamlit | Plotly
-
-**Deployment:**
-- Docker containerized | GitHub Actions CI/CD | Production-grade code
+**The result**: the grid upgrade you will never need.
 
 ---
 
-## 📚 Documentation
+## Documentation & Support
 
-- **[README](https://github.com/shadowWolf88/EnergyOrchestrator)** — Quick start & feature overview
-- **[ARCHITECTURE.md](https://github.com/shadowWolf88/EnergyOrchestrator)** — Technical deep dive
-- **[INSTALLATION.md](https://github.com/shadowWolf88/EnergyOrchestrator)** — Setup for all platforms
-- **[GitHub Repository](https://github.com/shadowWolf88/EnergyOrchestrator)** — Source code & issues
-
----
-
-## 🎯 Use Cases
-
-✓ **DNO Network Planning** — Defer transformer upgrades through coordinated DER control  
-✓ **Battery Sizing** — Right-size storage for peak shaving (not just arbitrage)  
-✓ **EV Integration** — Optimize charging timing to reduce feeder demand coincidence  
-✓ **Carbon Management** — Shift demand to periods of low-carbon grid generation  
-✓ **Regulatory Compliance** — Demonstrate compliance with network constraints  
+- **[GitHub Repository](https://github.com/shadowWolf88/EnergyOrchestrator)** — source code & issues *(update URL)*
+- **[About TORQ](pages/7_ℹ️_About.py)** — technical architecture, use cases, version info
+- **Email**: info@torq.energy
 
 ---
 
-## 📞 Support
-
-- **Bug Reports**: [GitHub Issues](https://github.com/shadowWolf88/EnergyOrchestrator/issues)
-- **Questions**: [GitHub Discussions](https://github.com/shadowWolf88/EnergyOrchestrator/discussions)
-- **Email**: info@energyorchestrator.io
-
----
-
-**AI Energy Orchestrator v1.0 | February 2026 | [⭐ Star on GitHub](https://github.com/shadowWolf88/EnergyOrchestrator)**
+**TORQ v1.0 | February 2026 | Transformer Orchestration & Resource Quantification**
 """)
