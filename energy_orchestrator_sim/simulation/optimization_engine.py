@@ -12,7 +12,7 @@ Rolling 48-hour horizon with Markov continuation for efficiency.
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Any
 import logging
 
 from ortools.linear_solver import pywraplp
@@ -74,7 +74,7 @@ class MILPOptimizer:
         ev_arrival: Optional[datetime] = None,
         ev_departure: Optional[datetime] = None,
         ev_required_energy_kwh: float = 0.0,
-    ) -> Tuple[Dict, Optional[pywraplp.MPSolverStatus]]:
+    ) -> Tuple[Dict, Optional[Any]]:
         """
         Optimize household over horizon (usually 48 hours rolling window).
         
@@ -84,7 +84,7 @@ class MILPOptimizer:
         """
         
         # Determine timesteps
-        num_timesteps = (horizon_hours * 60) // timestep_minutes
+        num_timesteps = int((horizon_hours * 60) / timestep_minutes)
         
         # Create solver
         self.solver = pywraplp.Solver.CreateSolver('CBC')
@@ -206,19 +206,22 @@ class MILPOptimizer:
         
         objective = self.solver.Objective()
         
-        # Cost of imports
+        # Cost of imports: directly on import_kw variable
         for t in range(num_timesteps):
             tariff = tariff_dict.get(t, 0.35)
-            dt = timestep_minutes / 60.0
-            energy_imported = import_kw[t] * dt
-            objective.SetCoefficient(energy_imported, self.config.weight_cost * tariff)
+            dt = timestep_minutes / 60.0  # Convert to hours
+            # Energy imported (kWh) = power (kW) * time (hours)
+            # Coefficient = cost per kWh * time (hours) = cost per kW per timestep
+            cost_per_kw = self.config.weight_cost * tariff * dt
+            objective.SetCoefficient(import_kw[t], cost_per_kw)
         
-        # Battery degradation: £35/MWh cycled
+        # Battery degradation: £35/MWh cycled = £0.035/kWh
         battery_deg_cost = 35.0 / 1000  # Per kWh
+        dt = timestep_minutes / 60.0
+        deg_cost_per_kw = self.config.weight_battery_degradation * battery_deg_cost * dt
         for t in range(num_timesteps):
-            dt = timestep_minutes / 60.0
-            energy_cycled = (battery_charge[t] + battery_discharge[t]) * dt
-            objective.SetCoefficient(energy_cycled, self.config.weight_battery_degradation * battery_deg_cost)
+            objective.SetCoefficient(battery_charge[t], deg_cost_per_kw)
+            objective.SetCoefficient(battery_discharge[t], deg_cost_per_kw)
         
         objective.SetMinimization()
         
@@ -231,7 +234,7 @@ class MILPOptimizer:
         control_dict = {}
         
         if status == pywraplp.Solver.OPTIMAL or status == pywraplp.Solver.FEASIBLE:
-            self.logger.info(f"Optimization solved: status={status}, gap={self.solver.ComputeExactCondition()}")
+            self.logger.info(f"Optimization solved: status={status}")
             
             for t in range(num_timesteps):
                 control_dict[t] = {
@@ -276,33 +279,120 @@ class EstateOptimizer:
         transformer_capacity_kw: float = 100.0,
     ) -> Dict:
         """
-        Optimize entire estate over period.
+        Optimize entire estate over period and simulate with optimized controls.
         
         Returns:
             Dict with results_df (timeline) and kpis (metrics)
         """
-        all_controls = {home.config.home_id: [] for home in self.homes}
+        all_results = []
         
         self.logger.info(f"Optimizing {len(self.homes)} homes over {num_days} days with Tx capacity {transformer_capacity_kw} kW")
         
-        # TODO: Implement multi-home coordination with transformer constraint
-        # For MVP: Optimize each home independently
+        # Rolling horizon: 48-hour windows with 24-hour step
+        for day_idx in range(num_days):
+            day_start = start_date + pd.Timedelta(days=day_idx)
+            day_end = day_start + pd.Timedelta(days=1)
+            
+            # Extract data for this day (+1 day lookahead for 48-hour window)
+            horizon_end = min(day_start + pd.Timedelta(days=2), start_date + pd.Timedelta(days=num_days))
+            
+            weather = data_dict['weather'][
+                (data_dict['weather']['timestamp'] >= day_start) &
+                (data_dict['weather']['timestamp'] < horizon_end)
+            ].reset_index(drop=True)
+            
+            tariff = data_dict['tariffs'][
+                (data_dict['tariffs']['timestamp'] >= day_start) &
+                (data_dict['tariffs']['timestamp'] < horizon_end)
+            ].reset_index(drop=True)
+            
+            demand = data_dict['demand'][
+                (data_dict['demand']['timestamp'] >= day_start) &
+                (data_dict['demand']['timestamp'] < horizon_end)
+            ].reset_index(drop=True)
+            
+            carbon = data_dict['carbon_intensity'][
+                (data_dict['carbon_intensity']['timestamp'] >= day_start) &
+                (data_dict['carbon_intensity']['timestamp'] < horizon_end)
+            ].reset_index(drop=True)
+            
+            # Reset EV states for new day
+            for home in self.homes:
+                if np.random.random() < 0.7:  # 70% of homes have EV on any given day
+                    arrival = day_start + pd.Timedelta(hours=17)
+                    departure = day_start + pd.Timedelta(days=1, hours=7)
+                    required_kwh = np.random.normal(30, 8)
+                    home.reset_ev(arrival, departure, max(15, min(60, required_kwh)))
+                else:
+                    home.clear_ev()
+            
+            # Build dicts for optimization
+            weather_dict = {i: {
+                'irradiance_wm2': weather.iloc[i]['irradiance_wm2'],
+                'temperature_c': weather.iloc[i]['temperature_c'],
+            } for i in range(len(weather))}
+            
+            tariff_dict = {i: tariff.iloc[i]['tariff_£_per_kwh'] for i in range(len(tariff))}
+            demand_dict = {i: demand.iloc[i]['demand_base_30min_kwh'] for i in range(len(demand))}
+            carbon_dict = {i: carbon.iloc[i]['carbon_intensity_gco2_per_kwh'] for i in range(len(carbon))}
+            
+            # Optimize and simulate each home with optimized controls
+            for home in self.homes:
+                control_dict, status = self.optimizer.optimize_household(
+                    home,
+                    horizon_hours=min(48, (horizon_end - day_start).total_seconds() / 3600),
+                    timestep_minutes=30,
+                    weather_dict=weather_dict,
+                    tariff_dict=tariff_dict,
+                    demand_dict=demand_dict,
+                    carbon_dict=carbon_dict,
+                )
+                
+                # Simulate the day with optimized controls
+                for timestep_idx in range(min(48, len(weather))):  # Only apply first 24h controls today
+                    t_dt = day_start + pd.Timedelta(minutes=timestep_idx * 30)
+                    
+                    if t_dt >= day_end:
+                        break
+                    
+                    row_data = {
+                        'timestamp': t_dt,
+                        'irradiance_wm2': weather.iloc[timestep_idx]['irradiance_wm2'],
+                        'temperature_c': weather.iloc[timestep_idx]['temperature_c'],
+                        'tariff_£_per_kwh': tariff_dict.get(timestep_idx, 0.35),
+                        'carbon_intensity_gco2_per_kwh': carbon_dict.get(timestep_idx, 300),
+                        'demand_base_kwh': demand_dict.get(timestep_idx, 0.2),
+                    }
+                    
+                    # Get optimized control for this timestep
+                    control = control_dict.get(timestep_idx, {
+                        'battery_charge_kw': 0.0,
+                        'battery_discharge_kw': 0.0,
+                        'ev_charge_kw': 0.0,
+                    })
+                    
+                    # Execute timestep with optimized controls
+                    net_load = home.step(
+                        t=row_data['timestamp'],
+                        irradiance_wm2=row_data['irradiance_wm2'],
+                        temperature_c=row_data['temperature_c'],
+                        demand_base_kwh=row_data['demand_base_kwh'],
+                        tariff_price=row_data['tariff_£_per_kwh'],
+                        carbon_intensity=row_data['carbon_intensity_gco2_per_kwh'],
+                        control=control,
+                    )
+                    
+                    # Log result
+                    result = home.get_state_dict()
+                    result['scenario'] = 'optimized'
+                    result['net_load_kw'] = net_load
+                    all_results.append(result)
         
-        for home in self.homes:
-            control_dict, status = self.optimizer.optimize_household(
-                home,
-                horizon_hours=48,
-                timestep_minutes=30,
-                weather_dict={},  # TODO: Populate from data_dict
-                tariff_dict={},
-                demand_dict={},
-                carbon_dict={},
-            )
-            all_controls[home.config.home_id] = control_dict
+        results_df = pd.concat([pd.DataFrame([r]) for r in all_results], ignore_index=True) if all_results else pd.DataFrame()
         
         return {
-            'controls': all_controls,
-            'transformer_capacity_kw': transformer_capacity_kw,
+            'results_df': results_df,
+            'kpis': {},  # Will be calculated by MetricsCalculator
         }
 
 

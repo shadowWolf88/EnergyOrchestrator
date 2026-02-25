@@ -325,12 +325,12 @@ class StatisticalValidator:
                 'violation_rate_pct': 100 * violations / len(daily_groups),
             }
         
-        overall_violation_rate = sum(r['violations'] for r in results.values()) / sum(len(daily_groups) for _ in results) if results else 0
+        overall_violation_rate = sum(r['balance_violations'] for r in results.values()) / sum(r['total_days'] for r in results.values()) if results else 0
         
         return {
             'per_home': results,
-            'overall_violation_rate_pct': overall_violation_rate,
-            'status': 'PASS' if overall_violation_rate < tolerance_pct else 'FAIL',
+            'overall_violation_rate_pct': overall_violation_rate * 100,
+            'status': 'PASS' if overall_violation_rate < tolerance_pct / 100 else 'FAIL',
         }
 
 

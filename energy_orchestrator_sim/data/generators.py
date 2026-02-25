@@ -81,11 +81,11 @@ class TariffGenerator:
     """Generate time-of-use tariff profiles."""
     
     @staticmethod
-    def flat_tariff() -> pd.DataFrame:
+    def flat_tariff(date: datetime) -> pd.DataFrame:
         """
         Flat tariff: £0.35/kWh all day.
         """
-        timestamps = pd.date_range('2024-01-01', periods=48, freq='30min')
+        timestamps = pd.date_range(date, periods=48, freq='30min')
         return pd.DataFrame({
             'timestamp': timestamps,
             'tariff_£_per_kwh': 0.35 * np.ones(48),
@@ -93,11 +93,11 @@ class TariffGenerator:
         })
     
     @staticmethod
-    def economy_7() -> pd.DataFrame:
+    def economy_7(date: datetime) -> pd.DataFrame:
         """
         Economy 7: £0.38/kWh peak (07:30-00:30), £0.16/kWh off-peak (00:30-07:30).
         """
-        timestamps = pd.date_range('2024-01-01', periods=48, freq='30min')
+        timestamps = pd.date_range(date, periods=48, freq='30min')
         hours = timestamps.hour + timestamps.minute / 60
         
         # Off-peak: 00:30 to 07:30
@@ -111,7 +111,7 @@ class TariffGenerator:
         })
     
     @staticmethod
-    def agile_pricing(seed: int = 42) -> pd.DataFrame:
+    def agile_pricing(date: datetime, seed: int = 42) -> pd.DataFrame:
         """
         Agile pricing: £0.10-£0.80/kWh mean-reverting random walk.
         
@@ -121,7 +121,7 @@ class TariffGenerator:
         - Occasional spike pricing
         """
         rng = np.random.default_rng(seed)
-        timestamps = pd.date_range('2024-01-01', periods=48, freq='30min')
+        timestamps = pd.date_range(date, periods=48, freq='30min')
         hours = timestamps.hour + timestamps.minute / 60
         
         # Base diurnal pattern: higher in evenings (17:00-20:00)
@@ -150,7 +150,7 @@ class CarbonIntensityGenerator:
     """Generate realistic UK grid carbon intensity."""
     
     @staticmethod
-    def synthetic_carbon_intensity(seed: int = 42) -> pd.DataFrame:
+    def synthetic_carbon_intensity(date: datetime, seed: int = 42) -> pd.DataFrame:
         """
         UK grid carbon intensity varies 50-800 gCO₂/kWh.
         
@@ -161,7 +161,7 @@ class CarbonIntensityGenerator:
         - Winter higher than summer
         """
         rng = np.random.default_rng(seed)
-        timestamps = pd.date_range('2024-01-01', periods=48, freq='30min')
+        timestamps = pd.date_range(date, periods=48, freq='30min')
         hours = timestamps.hour + timestamps.minute / 60
         
         # Base diurnal pattern
@@ -308,11 +308,11 @@ def generate_simulation_data(
         
         # Tariffs
         if tariff_type == "flat":
-            tariff = tariff_gen.flat_tariff()
+            tariff = tariff_gen.flat_tariff(date)
         elif tariff_type == "economy7":
-            tariff = tariff_gen.economy_7()
+            tariff = tariff_gen.economy_7(date)
         else:  # agile
-            tariff = tariff_gen.agile_pricing(seed=seed + day_offset)
+            tariff = tariff_gen.agile_pricing(date, seed=seed + day_offset)
         all_data['tariffs'].append(tariff)
         
         # Demand
@@ -320,7 +320,7 @@ def generate_simulation_data(
         all_data['demand'].append(demand)
         
         # Carbon intensity
-        carbon = carbon_gen.synthetic_carbon_intensity(seed=seed + day_offset)
+        carbon = carbon_gen.synthetic_carbon_intensity(date, seed=seed + day_offset)
         all_data['carbon_intensity'].append(carbon)
     
     # Concatenate all days

@@ -208,19 +208,19 @@ class EstateBaselineSimulator:
         
         # Aggregate per home
         per_home = results_df.groupby('home_id').agg({
-            'cumulative_cost_£': 'last',
+            'cumulative_cost_gbp': 'last',
             'peak_load_kw': 'max',
             'cumulative_co2_kg': 'last',
         }).reset_index()
         
-        per_home.columns = ['home_id', 'total_cost_£', 'peak_load_kw', 'total_co2_kg']
+        per_home.columns = ['home_id', 'total_cost_gbp', 'peak_load_kw', 'total_co2_kg']
         
         # Estate totals
         kpis = {
             'scenario': 'baseline',
             'num_homes': len(self.households),
-            'total_cost_£': results_df.groupby('home_id')['cumulative_cost_£'].last().sum(),
-            'avg_cost_per_home_£': per_home['total_cost_£'].mean(),
+            'total_cost_gbp': results_df.groupby('home_id')['cumulative_cost_gbp'].last().sum(),
+            'avg_cost_per_home_gbp': per_home['total_cost_gbp'].mean(),
             'estate_peak_load_kw': max(
                 results_df.groupby('timestamp')['net_load_kw'].sum() if 'net_load_kw' in results_df else [100]
             ),
